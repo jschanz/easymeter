@@ -1,0 +1,3 @@
+install the following perl modules
+
+apt-get install libdevice-serialport-perl liblog-log4perl-perl
