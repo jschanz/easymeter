@@ -22,8 +22,9 @@
 # 	0.1.0		->	first implementation
 #	0.2.0		->	smaspot integration for power recalculation
 #	0.2.1		->	calculation of consumption improved
+#	0.2.2		->	peak consumption preserved for v10 parameter
 #
-my $version = "0.2.1";
+my $version = "0.2.2";
 #
 #
 
@@ -104,7 +105,8 @@ $port->write_settings || undef $port;
 #############################################################################
 
 # read from device
-$logger->info("easymeter.pl ($version) ->gostart reading from device");
+$logger->info("######## easymeter.pl ($version) ########");
+$logger->info("start reading from device");
 my $rawData = readDevice();
 if ($rawData) {
 	# process data
@@ -246,6 +248,9 @@ sub processDataPvOutput {
 		$history[4] = $powerOverall; 	
 	}
 	
+	# preserve avtual power -> map actual power consumption to peak consumption.
+	my $peakConsumptionPowerOverall = $powerOverall;
+	
 	# if smaspot is enabled, calculate "real" powerOverall
 	my $smapower = 0;
 	if ($smaspot == 1) {
@@ -273,7 +278,7 @@ sub processDataPvOutput {
 			$avgPowerOverall = 0;
 		}
 	
-		$logger->info("uploading a average consumption of $avgPowerOverall (v4), a current consumption peak of $powerOverall (v10) and a generation of $smapower (v11)");
+		$logger->info("uploading a average consumption of $avgPowerOverall (v4), a current consumption peak of $peakConsumptionPowerOverall (v10) and a generation of $smapower (v11)");
 		
 		# curl 
 		# -d "d=20111201" 
