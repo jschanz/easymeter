@@ -23,8 +23,9 @@
 #	0.2.0		->	smaspot integration for power recalculation
 #	0.2.1		->	calculation of consumption improved
 #	0.2.2		->	peak consumption preserved for v10 parameter
+#	0.2.3		->	smooth out invalid values of smaspot in combination with negativ consumption (delivery)
 #
-my $version = "0.2.2";
+my $version = "0.2.3";
 #
 #
 
@@ -248,7 +249,7 @@ sub processDataPvOutput {
 		$history[4] = $powerOverall; 	
 	}
 	
-	# preserve avtual power -> map actual power consumption to peak consumption.
+	# preserve actual power -> map actual power consumption to peak consumption.
 	my $peakConsumptionPowerOverall = $powerOverall;
 	
 	# if smaspot is enabled, calculate "real" powerOverall
@@ -257,6 +258,13 @@ sub processDataPvOutput {
 		# smaspot enabled ... recalculate power data with smaspot values
 		$logger->debug("smaspot enabled");
 		$smapower = getSMAspotData();
+		
+		# smooth out defect values ... sometimes smaspot doesn't get a valid value
+		# so smapower is zero, but easymeter value is a minus value (delivery state)
+		if (($smapower == 0) and ($powerOverall < 0)) {
+			$logger->warn("smoothing out values: smapower: $smapower / power overall: $powerOverall");
+			$smapower = $powerOverall * -1;
+		}
 		
 		# recalculate (consumption + generation) 
 		$logger->info("actual consumption (easymeter): $powerOverall / sma energy generation: $smapower");
@@ -295,7 +303,7 @@ sub processDataPvOutput {
 					"-d \"v7=$powerL1\"",
 					"-d \"v8=$powerL2\"",
 					"-d \"v9=$powerL3\"",
-					"-d \"v10=$powerOverall\"",
+					"-d \"v10=$peakConsumptionPowerOverall\"",
 					"-d \"v11=$smapower\"",
 					"-H \"X-Pvoutput-Apikey: $pvoutput_apikey\"",
 					"-H \"X-Pvoutput-SystemId: $pvoutput_sid\"",
