@@ -259,11 +259,20 @@ sub processDataPvOutput {
 		$logger->debug("smaspot enabled");
 		$smapower = getSMAspotData();
 		
-		# smooth out defect values ... sometimes smaspot doesn't get a valid value
-		# so smapower is zero, but easymeter value is a minus value (delivery state)
+		# if getSMAspotData don't return a value, wait 10 secs an do a simple retry
+		# FIXME: implement a more effective retry management		
 		if (($smapower == 0) and ($powerOverall < 0)) {
-			$logger->warn("smoothing out values: smapower: $smapower / power overall: $powerOverall");
-			$smapower = $powerOverall * -1;
+			$logger->warn("no data from smaspot received, while easymeter is in delivery state. trying again ...");
+			sleep 10;
+			$smapower = getSMAspotData();
+			
+			# if smapower is after the second call always undef, set ratio to 1:1
+			# so smapower is zero, but easymeter value is a minus value (delivery state)
+			# smooth out invalid values
+			if (($smapower == 0) and ($powerOverall < 0)) {
+				$logger->warn("smoothing out values: smapower: $smapower / power overall: $powerOverall");
+				$smapower = $powerOverall * -1;
+			}
 		}
 		
 		# recalculate (consumption + generation) 
