@@ -28,8 +28,9 @@
 #	0.3.0		->	calculate acutal consumption and export by main import and export counters
 #	2.5.0 		->	upgrade to new versioning schema ... refactoring of pvoutput upload function to get
 #					more accurate consumption measurement
+#	2.5.1  		->	bugfix in combination with sma inverters and etotal ... value wasn't written to history file 
 #
-my $version = "2.5.0";
+my $version = "2.5.1";
 #
 #
 
@@ -262,12 +263,15 @@ sub processHistoryData {
 	$logger->info("$historyImportCounter, $historyExportCounter, $historyEpochSeconds, $historyEtotal");
 	if (!$historyImportCounter) {
 		$historyImportCounter = $importCounter;		# no valid value found
+		$logger->warn("no valid history value found for import counter");
 	}
 	if (!$historyExportCounter) {
 		$historyExportCounter = $exportCounter;		# no valid value found
+		$logger->warn("no valid history value found for export counter");
 	}
 	if (!$historyEtotal) {
 		$historyEtotal = $etotal;					# na valid value found
+		$logger->warn("no valid history value found for ETotal");
 	}
 
 	# store actual values for next run
@@ -316,8 +320,7 @@ sub getHistoryCounter {
 
 sub setHistoryCounter {
 	
-	my ($importCounter, $exportCounter) = @_;
-	my $epochSeconds = getEpochSeconds();
+	my ($importCounter, $exportCounter, $epochSeconds, $etotal) = @_;
 	
 	# write new data to file
 	# open filehandle for writing
@@ -325,7 +328,7 @@ sub setHistoryCounter {
 		$logger->logdie("Could not create $history_file");
 
 	# write new values to history file
-	print FILEHANDLE "$importCounter;$exportCounter;$epochSeconds";
+	print FILEHANDLE "$importCounter;$exportCounter;$epochSeconds;$etotal";
 		
 	# close filehandle
 	close(FILEHANDLE);
@@ -463,11 +466,11 @@ sub getSMAspotETotal {
 	# get ETotal from SMA inverter
 	my $power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
 	chomp($power);
-	
-	$logger->debug("received $power kWh from SmaSpot");
 
 	# transform kWh in Wh
 	$power = $power * 1000;
+
+	$logger->info("received $power Wh from SmaSpot");
 	
 	return $power;
 }
