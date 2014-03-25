@@ -297,17 +297,17 @@ sub processHistoryData {
 	# 1h = 60 min * 60 seconds = 3600 seconds
 	my $consumption = ($etotalDifference - $exportDifference) + $importDifference;
 	$consumption = $consumption / $epochSecondsAsHour;
-	$logger->info("average consumption of $consumption in the last $epochSecondsAsHour hours");
+	$logger->info("average consumption of $consumption in the last $epochSecondsDifference seconds");
 	
 	# calculate generation as average w/h
 	# generation = $etotalDifference / $epochSecondsAsHour
 	my $generation = $etotalDifference / $epochSecondsAsHour;
-	$logger->info("average generation of $generation in the last $epochSecondsAsHour hours");
+	$logger->info("average generation of $generation in the last $epochSecondsDifference seconds");
 	
 	# calculate export as average w/h
 	# export = $exportDifference / $epochSecondsAsHour
 	my $export = $exportDifference / $epochSecondsAsHour;
-	$logger->info("average export of $export in the last $epochSecondsAsHour hours");
+	$logger->info("average export of $export in the last $epochSecondsDifference seconds");
 	
 	return ($consumption, $generation, $export);
 }
