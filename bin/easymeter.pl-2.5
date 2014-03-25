@@ -28,9 +28,11 @@
 #	0.3.0		->	calculate acutal consumption and export by main import and export counters
 #	2.5.0 		->	upgrade to new versioning schema ... refactoring of pvoutput upload function to get
 #					more accurate consumption measurement
-#	2.5.1  		->	bugfix in combination with sma inverters and etotal ... value wasn't written to history file 
+#	2.5.1  		->	bugfix in combination with sma inverters and etotal ... value wasn't written to history file
+#	2.5.2		->	convert possible float values from easymeter import or export counter to simple int
+#					add extended pvoutput values (v7, v8, v9, v10, v11) 
 #
-my $version = "2.5.1";
+my $version = "2.5.2";
 #
 #
 
@@ -129,7 +131,7 @@ if ($rawData) {
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber) = parseRawData($rawData);
 
 	# process history data and calculate imported and exported power between this and the last run
-	my ($consumption) = processHistoryData($importCounter, $exportCounter);
+	my ($consumption, $generation, $export) = processHistoryData($importCounter, $exportCounter);
 	
 	### 
 	# possible output engines
@@ -137,13 +139,13 @@ if ($rawData) {
 	# create csv entry as comma seperated value
 	if ($csv == 1) {
 		$logger->info("create csv entry in $csv_file");
-		processDataCSV($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption);
+		processDataCSV($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
 	}
 	
 	# upload data to pvoutput
 	if ($pvoutput_upload == 1) {
 		$logger->info("pvoutput enabled");
-		processDataPvOutput($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption);
+		processDataPvOutput($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
 	}
 	
 	# TODO: MySQL
@@ -228,7 +230,7 @@ sub parseRawData {
 
 sub processDataCSV {
 	
-	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption) = @_;
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 	
 	my $datetime = `date +%d.%m.%y\\;%H:%M`;
 	chomp($datetime);
@@ -238,7 +240,7 @@ sub processDataCSV {
 		$logger->logdie("Could not create $csv_file");
 
 	# write csv stream to filehandle
-	print FILEHANDLE "$datetime;$ownershipNumber;$importCounter;$exportCounter;$powerL1;$powerL2;$powerL3;$powerOverall;$state;$serialNumber;$consumption\n";
+	print FILEHANDLE "$datetime;$ownershipNumber;$importCounter;$exportCounter;$powerL1;$powerL2;$powerL3;$powerOverall;$state;$serialNumber;$consumption;$generation;$export\n";
 		
 	# close filehandle
 	close(FILEHANDLE);
@@ -246,8 +248,8 @@ sub processDataCSV {
 
 sub processHistoryData {
 	
-	my $importCounter = $_[0];
-	my $exportCounter = $_[1];
+	my $importCounter = float2int($_[0]);	# convert to int to avoid problems with possible float values 
+	my $exportCounter = float2int($_[1]);	# convert to int to avoid problems with possible float values
 	my $epochSeconds = getEpochSeconds();
 	
 	# if pvoutput is enabled, read actual etotal
@@ -287,17 +289,27 @@ sub processHistoryData {
 	my $etotalDifference = $etotal - $historyEtotal;
 	$logger->info("etotal: difference: $etotalDifference -> ETotal: $etotal -> history: $historyEtotal");
 
+	my $epochSecondsAsHour = $epochSecondsDifference / 3600;
+
 	# calculate consumption as average w/h 
 	# consumption = ((smaspot_etotal - easymeter_export) + easymeter_import) / secondsdifference * 3600
 	# difference is calculated in seconds ... so do some math to get w/h
 	# 1h = 60 min * 60 seconds = 3600 seconds
 	my $consumption = ($etotalDifference - $exportDifference) + $importDifference;
-	my $epochSecondsAsHour = $epochSecondsDifference / 3600;
 	$consumption = $consumption / $epochSecondsAsHour;
-
 	$logger->info("average consumption of $consumption in the last $epochSecondsAsHour hours");
 	
-	return ($consumption);
+	# calculate generation as average w/h
+	# generation = $etotalDifference / $epochSecondsAsHour
+	my $generation = $etotalDifference / $epochSecondsAsHour;
+	$logger->info("average generation of $generation in the last $epochSecondsAsHour hours");
+	
+	# calculate export as average w/h
+	# export = $exportDifference / $epochSecondsAsHour
+	my $export = $exportDifference / $epochSecondsAsHour;
+	$logger->info("average export of $export in the last $epochSecondsAsHour hours");
+	
+	return ($consumption, $generation, $export);
 }
 
 sub getHistoryCounter {
@@ -336,7 +348,7 @@ sub setHistoryCounter {
 
 sub processDataPvOutput {
 	
-	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption) = @_;
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 	
 	# get timestamp
 	my $date = `date +%Y%m%d`;
@@ -389,6 +401,10 @@ sub processDataPvOutput {
 	$logger->info("upload counter: ($uploadcounter / 5)");
 	if ($uploadcounter == 1) {
 		$logger->info("uploading average consumption of $averageConsumption5min to pvoutput");
+		
+		# modify $generation to show export in pvoutput extended tab
+		$generation = $generation * -1;
+		
 		# curl 
 		# -d "d=20111201" 
 		# -d "t=10:00" 
@@ -401,6 +417,11 @@ sub processDataPvOutput {
 					"-d \"d=$date\"",
 					"-d \"t=$time\"",
 					"-d \"v4=$averageConsumption5min\"",
+					"-d \"v7=$powerL1\"",
+					"-d \"v8=$powerL2\"",
+					"-d \"v9=$powerL3\"",
+					"-d \"v10=$averageConsumption5min\"",
+					"-d \"v11=$generation\"",
 					"-H \"X-Pvoutput-Apikey: $pvoutput_apikey\"",
 					"-H \"X-Pvoutput-SystemId: $pvoutput_sid\"",
 					"http://pvoutput.org/service/r2/addstatus.jsp"
@@ -467,10 +488,21 @@ sub getSMAspotETotal {
 	my $power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
 	chomp($power);
 
+	$logger->info("received $power kWh from SmaSpot");
+	
 	# transform kWh in Wh
 	$power = $power * 1000;
 
 	$logger->info("received $power Wh from SmaSpot");
 	
 	return $power;
+}
+
+sub float2int {
+
+	my $float = $_[0];
+	
+	my $int = int($float);
+	
+	return $int;	
 }
