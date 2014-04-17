@@ -33,8 +33,9 @@
 #					add extended pvoutput values (v7, v8, v9, v10, v11)
 #	2.5.3		->	float2int modified to sprintf (function int sometimes returns strange values), ntp drift improved
 #	2.5.4		->	MySQL-Extension added -> see INSTALL
+#	2.5.5		->	generation output bug in pvoutput fixed
 #
-my $version = "2.5.4";
+my $version = "2.5.5";
 #
 #
 
@@ -421,7 +422,7 @@ sub processDataPvOutput {
 		$logger->info("uploading average consumption of $averageConsumption5min to pvoutput");
 		
 		# modify $generation to show export in pvoutput extended tab
-		$generation = $generation * -1;
+		$generation = $generation;
 		
 		# curl 
 		# -d "d=20111201" 
