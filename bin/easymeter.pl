@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Copyright (C) 2013 Jens Schanz
+# Copyright (C) 2013, 2014 Jens Schanz
 #
 #
 # Author:  Jens Schanz  <mail@jensschanz.de>
@@ -24,11 +24,24 @@
 #	0.2.1		->	calculation of consumption improved
 #	0.2.2		->	peak consumption preserved for v10 parameter
 #	0.2.3		->	smooth out invalid values of smaspot in combination with negativ consumption (delivery)
+#	0.2.4		->	upload import register of easymeter as cumulative value (c1 = 1)
+#	0.3.0		->	calculate acutal consumption and export by main import and export counters
+#	2.5.0 		->	upgrade to new versioning schema ... refactoring of pvoutput upload function to get
+#					more accurate consumption measurement
+#	2.5.1  		->	bugfix in combination with sma inverters and etotal ... value wasn't written to history file
+#	2.5.2		->	convert possible float values from easymeter import or export counter to simple int
+#					add extended pvoutput values (v7, v8, v9, v10, v11)
+#	2.5.3		->	float2int modified to sprintf (function int sometimes returns strange values), ntp drift improved
+#	2.5.4		->	MySQL-Extension added -> see INSTALL
+#	2.5.5		->	generation output bug in pvoutput fixed
+#	2.6.0		->	Dashing-Extension (http://shopify.github.io/dashing/) added
 #
-my $version = "0.2.3";
+my $version = "2.6.0";
 #
 #
 
+###
+# create environment
 use strict;
 use warnings;
 
@@ -74,6 +87,9 @@ my $device_databits = $configOptions{device_databits};
 my $device_stopbits = $configOptions{device_stopbits};
 my $device_parity = $configOptions{device_parity};
 
+# diff file
+my $history_file = $configOptions{history_file};
+
 # csv
 my $csv = $configOptions{csv};
 my $csv_file = $configOptions{csv_file};
@@ -87,6 +103,23 @@ my $pvoutput_temp_file = $configOptions{pvoutput_temp_file};
 # smaspot
 my $smaspot = $configOptions{smaspot};
 my $smaspot_bin = $configOptions{smaspot_bin};
+
+# stdout
+my $stdout = $configOptions{stdout};
+
+# MySQL
+my $mysql = $configOptions{mysql};
+my $mysql_user = $configOptions{mysql_user};
+my $mysql_password = $configOptions{mysql_password};
+my $mysql_server = $configOptions{mysql_server};
+my $mysql_database = $configOptions{mysql_database};
+
+# Dashing
+my $dashing = $configOptions{dashing};
+my $dashing_import_url = $configOptions{dashing_import_url};
+my $dashing_export_url = $configOptions{dashing_export_url};
+my $dashing_generation_url = $configOptions{dashing_generation_url};
+my $dashing_consumption_url = $configOptions{dashing_consumption_url};
 
 ###
 # initilaize serial device
@@ -110,20 +143,46 @@ $logger->info("######## easymeter.pl ($version) ########");
 $logger->info("start reading from device");
 my $rawData = readDevice();
 if ($rawData) {
-	# process data
+	# parse and transform raw data and create readable format
 	$logger->debug("processing data: $rawData");
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber) = parseRawData($rawData);
 
-	# create csv entry
+	# process history data and calculate imported and exported power between this and the last run
+	my ($consumption, $generation, $export) = processHistoryData($importCounter, $exportCounter);
+	
+	### 
+	# possible output engines
+	
+	# create csv entry as comma seperated value
 	if ($csv == 1) {
 		$logger->info("create csv entry in $csv_file");
-		processDataCSV($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber);
+		processDataCSV($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
 	}
 	
 	# upload data to pvoutput
 	if ($pvoutput_upload == 1) {
 		$logger->info("pvoutput enabled");
-		processDataPvOutput($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber);
+		processDataPvOutput($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
+	}
+	
+	# store data in a MySQL database
+	if ($mysql == 1) {
+		$logger->info("MySQL export enabled");
+		processDataMySQL($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
+	}
+	
+	# export data to a dashing dashboard
+	if ($dashing == 1) {
+		$logger->info("Dashing export enabled");
+		processDataDashing($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
+	}
+
+	# TODO: Munin
+	# TODO: Graphite
+	# print to STDOUT
+	if ($stdout == 1) {
+		$logger->info("STDOUT enabled");
+		print "$ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption\n";
 	}
 }
 $logger->info("all done");
@@ -199,7 +258,7 @@ sub parseRawData {
 
 sub processDataCSV {
 	
-	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber) = @_;
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 	
 	my $datetime = `date +%d.%m.%y\\;%H:%M`;
 	chomp($datetime);
@@ -209,7 +268,112 @@ sub processDataCSV {
 		$logger->logdie("Could not create $csv_file");
 
 	# write csv stream to filehandle
-	print FILEHANDLE "$datetime;$ownershipNumber;$importCounter;$exportCounter;$powerL1;$powerL2;$powerL3;$powerOverall;$state;$serialNumber\n";
+	print FILEHANDLE "$datetime;$ownershipNumber;$importCounter;$exportCounter;$powerL1;$powerL2;$powerL3;$powerOverall;$state;$serialNumber;$consumption;$generation;$export\n";
+		
+	# close filehandle
+	close(FILEHANDLE);
+}
+
+sub processHistoryData {
+	
+	my $importCounter = float2int($_[0]);	# convert to int to avoid problems with possible float values 
+	my $exportCounter = float2int($_[1]);	# convert to int to avoid problems with possible float values
+	my $epochSeconds = getEpochSeconds();
+	
+	# if pvoutput is enabled, read actual etotal
+	my $etotal;
+	if ($pvoutput_upload == 1) {
+		$etotal = getSMAspotETotal();
+	} else {
+		$etotal = 0;
+	}
+
+	# read history values
+	my ($historyImportCounter, $historyExportCounter, $historyEpochSeconds, $historyEtotal) = getHistoryCounter();
+	$logger->info("$historyImportCounter, $historyExportCounter, $historyEpochSeconds, $historyEtotal");
+	if (!$historyImportCounter) {
+		$historyImportCounter = $importCounter;		# no valid value found
+		$logger->warn("no valid history value found for import counter");
+	}
+	if (!$historyExportCounter) {
+		$historyExportCounter = $exportCounter;		# no valid value found
+		$logger->warn("no valid history value found for export counter");
+	}
+	if (!$historyEtotal) {
+		$historyEtotal = $etotal;					# na valid value found
+		$logger->warn("no valid history value found for ETotal");
+	}
+	
+	# fix ntp drifting
+	if ($epochSeconds < $historyEpochSeconds) {
+		$epochSeconds = $historyEpochSeconds + 1;
+	}
+		
+	# store actual values for next run
+	setHistoryCounter($importCounter, $exportCounter, $epochSeconds, $etotal);
+	
+	#  calculate difference
+	my $importDifference = $importCounter - $historyImportCounter;
+	$logger->info("import: difference: $importDifference -> Counter: $importCounter -> history: $historyImportCounter");
+	my $exportDifference = $exportCounter - $historyExportCounter;
+	$logger->info("export: difference: $exportDifference -> Counter: $exportCounter -> history: $historyExportCounter");
+	my $epochSecondsDifference = $epochSeconds - $historyEpochSeconds;
+	$logger->info("time: difference: $epochSecondsDifference -> Seconds: $epochSeconds -> history: $historyEpochSeconds");
+	my $etotalDifference = $etotal - $historyEtotal;
+	$logger->info("etotal: difference: $etotalDifference -> ETotal: $etotal -> history: $historyEtotal");
+
+	my $epochSecondsAsHour = $epochSecondsDifference / 3600;
+
+	# calculate consumption as average w/h 
+	# consumption = ((smaspot_etotal - easymeter_export) + easymeter_import) / secondsdifference * 3600
+	# difference is calculated in seconds ... so do some math to get w/h
+	# 1h = 60 min * 60 seconds = 3600 seconds
+	my $consumption = ($etotalDifference - $exportDifference) + $importDifference;
+	$consumption = $consumption / $epochSecondsAsHour;
+	$logger->info("average consumption of $consumption Wh in the last $epochSecondsDifference seconds");
+	
+	# calculate generation as average w/h
+	# generation = $etotalDifference / $epochSecondsAsHour
+	my $generation = $etotalDifference / $epochSecondsAsHour;
+	$logger->info("average generation of $generation Wh in the last $epochSecondsDifference seconds");
+	
+	# calculate export as average w/h
+	# export = $exportDifference / $epochSecondsAsHour
+	my $export = $exportDifference / $epochSecondsAsHour;
+	$logger->info("average export of $export Wh in the last $epochSecondsDifference seconds");
+	
+	return ($consumption, $generation, $export);
+}
+
+sub getHistoryCounter {
+	
+	open my $filehandle, '<', $history_file or
+		$logger->logwarn("Could not open $history_file");
+	my $storedData = <$filehandle>;
+	chomp($storedData);
+	close($filehandle);
+	
+	my @history = split (/;/, $storedData);
+	
+	my $importCounter = $history[0];
+	my $exportCounter = $history[1];
+	my $epochSeconds = $history[2];
+	my $etotal = $history[3];
+	
+	return ($importCounter, $exportCounter, $epochSeconds, $etotal);
+}
+
+sub setHistoryCounter {
+	
+	my ($importCounter, $exportCounter, $epochSeconds, $etotal) = @_;
+	
+	# write new data to file
+	# open filehandle for writing
+	open (FILEHANDLE, ">$history_file") or
+		$logger->logdie("Could not create $history_file");
+
+	# write new values to history file
+	print FILEHANDLE "$importCounter;$exportCounter;$epochSeconds;$etotal";
 		
 	# close filehandle
 	close(FILEHANDLE);
@@ -217,14 +381,14 @@ sub processDataCSV {
 
 sub processDataPvOutput {
 	
-	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber) = @_;
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 	
 	# get timestamp
 	my $date = `date +%Y%m%d`;
 	chomp($date);
 	my $time = `date +%H:%M`;
 	chomp($time);
-		
+
 	# read stored history values
 	open my $filehandle, '<', $pvoutput_temp_file or
 		$logger->logdie("Could not open $pvoutput_temp_file");
@@ -233,69 +397,46 @@ sub processDataPvOutput {
 	close($filehandle);
 		
 	# process stored history values
-	# timer;1min;2min;3min;4min;5min
+	# uploadcounter;1min;2min;3min;4min
 	# if value is zero, set it to actual power
 	my @history = split (/;/, $storedData);
-	if ($history[1] ==  0) {
-		$history[1] = $powerOverall; 	
+	my $uploadcounter 	= $history[0];
+	my $consumption1min = $history[1];
+	my $consumption2min = $history[2];
+	my $consumption3min = $history[3];
+	my $consumption4min = $history[4];
+
+	# if nothing is set (e.g. first run) preload variables with actual consumption to avoid wrong values
+	if (($consumption1min ==  0) or (!$consumption1min)) {
+		$logger->warn("no valid consumption from 1 minute ago found -> setting it to actual consumption");
+		$consumption1min = $consumption;
 	}
-	if ($history[2] ==  0) {
-		$history[2] = $powerOverall; 	
+	if (($consumption2min ==  0) or (!$consumption2min)) {
+		$logger->warn("no valid consumption from 2 minutes ago found -> setting it to actual consumption");
+		$consumption2min = $consumption; 	
 	}
-	if ($history[3] ==  0) {
-		$history[3] = $powerOverall; 	
+	if (($consumption3min ==  0) or (!$consumption3min)) {
+		$logger->warn("no valid consumption from 3 minutes ago found -> setting it to actual consumption");
+		$consumption3min = $consumption; 	
 	}
-	if ($history[4] ==  0) {
-		$history[4] = $powerOverall; 	
+	if (($consumption4min ==  0) or (!$consumption4min)) {
+		$logger->warn("no valid consumption from 4 minutes ago found -> setting it to actual consumption");
+		$consumption4min = $consumption; 	
 	}
 	
-	# preserve actual power -> map actual power consumption to peak consumption.
-	my $peakConsumptionPowerOverall = $powerOverall;
-	
-	# if smaspot is enabled, calculate "real" powerOverall
-	my $smapower = 0;
-	if ($smaspot == 1) {
-		# smaspot enabled ... recalculate power data with smaspot values
-		$logger->debug("smaspot enabled");
-		$smapower = getSMAspotData();
+	# calculate average consumption for the last 5 minutes to upload it to pvoutput
+	# because only one upload in 5 minutes counts and is valid
+	my $averageConsumption5min = ($consumption + $consumption1min + $consumption2min + $consumption3min + $consumption4min) / 5;
+	$logger->info("average: $averageConsumption5min / actual: $consumption / 1min: $consumption1min / 2min: $consumption2min / 3min: $consumption3min / 4min: $consumption4min");
+
+	# upload average consumption for the last 5 minutes 
+	# do this only every 5 minutes due to an upload limitation of pvoutput
+	$logger->info("upload counter: ($uploadcounter / 5)");
+	if ($uploadcounter == 1) {
+		$logger->info("uploading average consumption of $averageConsumption5min to pvoutput");
 		
-		# if getSMAspotData don't return a value, wait 10 secs an do a simple retry
-		# FIXME: implement a more effective retry management		
-		if (($smapower == 0) and ($powerOverall < 0)) {
-			$logger->warn("no data from smaspot received, while easymeter is in delivery state. trying again ...");
-			sleep 10;
-			$smapower = getSMAspotData();
-			
-			# if smapower is after the second call always undef, set ratio to 1:1
-			# so smapower is zero, but easymeter value is a minus value (delivery state)
-			# smooth out invalid values
-			if (($smapower == 0) and ($powerOverall < 0)) {
-				$logger->warn("smoothing out values: smapower: $smapower / power overall: $powerOverall");
-				$smapower = $powerOverall * -1;
-			}
-		}
-		
-		# recalculate (consumption + generation) 
-		$logger->info("actual consumption (easymeter): $powerOverall / sma energy generation: $smapower");
-		$powerOverall = $powerOverall + $smapower;
-	}
-		
-	# to avoid high load spikes and lost outputs, calculate average load for the last 5 minutes
-	my $avgPowerOverall = ($history[1] + $history[2] + $history[3] + $history[4] + $powerOverall) / 5;
-	$logger->info("consumption -> now: $powerOverall / 1min: $history[1] / 2min: $history[2] / 3min: $history[3] / 4min: $history[4]");
-	$logger->info("consumption -> average 5min: $avgPowerOverall / run: $history[0]");
-		
-	if ($history[0] == 1){
-		# upload value to pvoutput
-		$logger->debug("uploading actual power to pvoutput");
-		
-		# due to a limitation of pvoutput avoid negativ values
-		if ($avgPowerOverall < 0) {
-			$logger->warn("zero value found $avgPowerOverall -> please check, should never occur");
-			$avgPowerOverall = 0;
-		}
-	
-		$logger->info("uploading a average consumption of $avgPowerOverall (v4), a current consumption peak of $peakConsumptionPowerOverall (v10) and a generation of $smapower (v11)");
+		# modify $generation to show export in pvoutput extended tab
+		$generation = $generation;
 		
 		# curl 
 		# -d "d=20111201" 
@@ -308,38 +449,124 @@ sub processDataPvOutput {
 		my @args = ("curl",
 					"-d \"d=$date\"",
 					"-d \"t=$time\"",
-					"-d \"v4=$avgPowerOverall\"",
+					"-d \"v4=$averageConsumption5min\"",
 					"-d \"v7=$powerL1\"",
 					"-d \"v8=$powerL2\"",
 					"-d \"v9=$powerL3\"",
-					"-d \"v10=$peakConsumptionPowerOverall\"",
-					"-d \"v11=$smapower\"",
+					"-d \"v10=$averageConsumption5min\"",
+					"-d \"v11=$generation\"",
 					"-H \"X-Pvoutput-Apikey: $pvoutput_apikey\"",
 					"-H \"X-Pvoutput-SystemId: $pvoutput_sid\"",
 					"http://pvoutput.org/service/r2/addstatus.jsp"
 					);
 		system("@args");
+
 	}
-		
-	# increase counter (upload only every 5th value to pvoutput due to limitation of pvoutput)
-	if ($history[0] == 5) {
-		$history[0] = 1;
+
+	# increase upload counter
+	if ($uploadcounter == 5) {
+		$uploadcounter = 1;
 	} else {
-		++$history[0];
+		++$uploadcounter;
 	}
-		
+
 	# write new data to file
 	# open filehandle for writing
 	open (FILEHANDLE, ">$pvoutput_temp_file") or
 		$logger->logdie("Could not create $pvoutput_temp_file");
 
 	# write new values to history file
-	print FILEHANDLE "$history[0];$powerOverall;$history[1];$history[2];$history[3];$history[4]";
+	print FILEHANDLE "$uploadcounter;$consumption;$consumption1min;$consumption2min;$consumption3min";
 		
 	# close filehandle
-	close(FILEHANDLE);
+	close(FILEHANDLE);	
 }
 
+sub processDataMySQL {
+
+	use DBI;
+	use DBD::mysql;
+	
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
+	
+	# create database connection
+	my $dbh = DBI->connect( "dbi:mysql:database=$mysql_database;host=$mysql_server",
+					$mysql_user, $mysql_password, { AutoCommit => 0 } );
+	$logger->warn ("Can not establish connection to $mysql_server->$mysql_database: $DBI::errstr")
+	  unless defined $dbh;
+	$logger->warn("Connection to source: $mysql_server->$mysql_database established ...");
+	my $createDate = `date +"%Y-%m-%d %H:%M:%S"`;
+	
+	my $sql = "INSERT INTO easymeter_data 
+					VALUES (
+							'$createDate', 
+							'$ownershipNumber', 
+							'$importCounter', 
+							'$exportCounter', 
+							'$powerL1', 
+							'$powerL2', 
+							'$powerL3', 
+							'$powerOverall', 
+							'$state', 
+							'$serialNumber', 
+							'$consumption',
+							'$generation',
+							'$export')";
+	$logger->debug($sql);
+		
+	my $sth = $dbh->prepare($sql) or
+		$logger->warn( "error at prepare ..." . $dbh->errstr . "");
+	$sth->execute() or
+		$logger->warn( "error at execute ..." . $dbh->errstr . "");
+	$sth->finish;
+	
+	# disconnect from database
+	$dbh->commit;
+	$dbh->disconnect();
+}
+
+sub processDataDashing {
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
+	
+	use LWP::UserAgent;
+ 
+	my $ua = LWP::UserAgent->new;
+	
+	# build endpoint hash
+	my %endpoint = (
+        $dashing_import_url => $powerOverall,
+        $dashing_export_url => $export,
+        $dashing_generation_url => $generation,
+        $dashing_consumption_url => $consumption
+    ); 
+
+	# export values to each endpoint	
+ 	while ( my ($endpoint_url, $value) = each(%endpoint) ) {
+ 		
+ 		# round value to avoid sizing problems in dashing
+ 		$value = sprintf("%.2f", $value);
+ 		
+ 		$logger->info("$endpoint_url -> $value");
+
+		# set custom HTTP request header fields
+		my $req = HTTP::Request->new(POST => $endpoint_url);
+		$req->header('content-type' => 'application/json');
+		$req->header('x-auth-token' => 'YOUR_AUTH_TOKEN');
+	 
+		# add POST data to HTTP request body
+		my $post_data = '{ "auth_token": "YOUR_AUTH_TOKEN", "current": "' .  $value . '" }';
+		$req->content($post_data);
+	
+		my $resp = $ua->request($req);
+		if ($resp->is_success) {
+	    	my $message = $resp->decoded_content;
+	    	$logger->debug("Received reply: $message");
+		} else {
+	    	$logger->error("HTTP POST error code: $resp->code, ");
+	    	$logger->error("HTTP POST error message: $resp->message ");
+		}
+    }
+}
 
 sub transformData {
 	my $data = $_[0];
@@ -364,14 +591,35 @@ sub convertkWh2Wh {
 	return $data;	
 }
 
-sub getSMAspotData {
+sub getEpochSeconds {
 	
-	my $power = `$smaspot_bin -v -finq | grep \"Total Pac\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kW//g\" | sed \"s/ //g\"`;
-	chomp($power);
+	my $epochSeconds = `date +%s`;
+	chomp($epochSeconds);
 	
-	$logger->debug("received $power kW from SmaSpot");
+	return $epochSeconds;
+}
 
+sub getSMAspotETotal {
+	
+	# get ETotal from SMA inverter
+	my $power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
+	chomp($power);
+
+	$logger->info("received $power kWh from SmaSpot");
+	
+	# transform kWh in Wh
 	$power = $power * 1000;
+
+	$logger->info("received $power Wh from SmaSpot");
 	
 	return $power;
+}
+
+sub float2int {
+
+	my $float = $_[0];
+	
+	my $int = sprintf("%.0f", $float);
+	
+	return $int;	
 }
