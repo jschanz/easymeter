@@ -14,7 +14,3 @@ install a cronjob to /etc/cron.d/
 you can skip the "sleep 30" command if you don't use pvoutput-upload. if you use pvoutput-upload it's recommended, because otherwise there would be some problemes with smaspot, bluetooth and the sma inverters
  
 upload to pvoutput is done every 5 minutes
-
-# CHANGELOG
-# 23.03.2014 	2.5.0 	calculate real consuption with import and export counter (incl. smaspot support)
-
