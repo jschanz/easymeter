@@ -528,9 +528,36 @@ sub processDataMySQL {
 sub processDataDashing {
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 	
+	# treat powerOverall as import value (positive values only - negative values will be displayed in export widget)
+	if ( $powerOverall < 0 ) {
+		$powerOverall = 0;
+	}
+	
 	use LWP::UserAgent;
  
 	my $ua = LWP::UserAgent->new;
+	
+	# round values to avoid sizing problems in dashing
+ 	$powerOverall = sprintf("%.1f", $powerOverall);
+ 	$export = sprintf("%.1f", $export);
+ 	$generation = sprintf("%.1f", $generation);
+ 	$consumption = sprintf("%.1f", $consumption);
+	
+	# if pvoutput is enabled gather some statistics
+	if ($pvoutput_upload == 1) {
+		# curl  -d "c=1" -d "df=20140418" -d "dt=20140418" -H "X-Pvoutput-Apikey: 97ebea47e855e55c0d7a85b7c3be784edf086833" -H "X-Pvoutput-SystemId: 23592" http://pvoutput.org/service/r2/getstatistic.jsp
+		# 5937,925,5937,5937,5937,0.900,1,20140418,20140418,0.900,20140418,13003,7991,0,0,0,13003,13003,13003
+		# Generated [1] (5937) / Exported [2] (925) /  Consumed [12] (13003) / Import [13] (7991)
+	
+		my $url = "curl -s -d \"c=1\" -d \"df=20140418\" -d \"dt=20140418\" -H \"X-Pvoutput-Apikey: $pvoutput_apikey\" -H \"X-Pvoutput-SystemId: $pvoutput_sid\" http://pvoutput.org/service/r2/getstatistic.jsp";
+		my $pvoutput_statistics = `$url`;
+		my @pvoutput_statistics_values = split(/,/,$pvoutput_statistics);
+		 
+		$powerOverall = "$powerOverall W/h ($pvoutput_statistics_values[12] W/h)";
+		$export = "$export W/h ($pvoutput_statistics_values[1] W/h)";
+		$generation = "$generation W/h ($pvoutput_statistics_values[0] W/h)";
+		$consumption = "$consumption W/h ($pvoutput_statistics_values[11] W/h)";
+	}
 	
 	# build endpoint hash
 	my %endpoint = (
@@ -542,10 +569,7 @@ sub processDataDashing {
 
 	# export values to each endpoint	
  	while ( my ($endpoint_url, $value) = each(%endpoint) ) {
- 		
- 		# round value to avoid sizing problems in dashing
- 		$value = sprintf("%.2f", $value);
- 		
+ 		 		
  		$logger->info("$endpoint_url -> $value");
 
 		# set custom HTTP request header fields
@@ -554,7 +578,7 @@ sub processDataDashing {
 		$req->header('x-auth-token' => 'YOUR_AUTH_TOKEN');
 	 
 		# add POST data to HTTP request body
-		my $post_data = '{ "auth_token": "YOUR_AUTH_TOKEN", "current": "' .  $value . '" }';
+		my $post_data = '{ "auth_token": "YOUR_AUTH_TOKEN", "text": "' .  $value . '" }';
 		$req->content($post_data);
 	
 		my $resp = $ua->request($req);
