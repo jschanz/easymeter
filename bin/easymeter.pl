@@ -35,8 +35,9 @@
 #	2.5.4		->	MySQL-Extension added -> see INSTALL
 #	2.5.5		->	generation output bug in pvoutput fixed
 #	2.6.0		->	Dashing-Extension (http://shopify.github.io/dashing/) added
+#	2.6.1		->	date problem in pvoutput get for dashing fixed
 #
-my $version = "2.6.0";
+my $version = "2.6.1";
 #
 #
 
@@ -543,13 +544,15 @@ sub processDataDashing {
  	$generation = sprintf("%.1f", $generation);
  	$consumption = sprintf("%.1f", $consumption);
 	
+	my $date = getDate();
+	
 	# if pvoutput is enabled gather some statistics
 	if ($pvoutput_upload == 1) {
 		# curl  -d "c=1" -d "df=20140418" -d "dt=20140418" -H "X-Pvoutput-Apikey: 97ebea47e855e55c0d7a85b7c3be784edf086833" -H "X-Pvoutput-SystemId: 23592" http://pvoutput.org/service/r2/getstatistic.jsp
 		# 5937,925,5937,5937,5937,0.900,1,20140418,20140418,0.900,20140418,13003,7991,0,0,0,13003,13003,13003
 		# Generated [1] (5937) / Exported [2] (925) /  Consumed [12] (13003) / Import [13] (7991)
 	
-		my $url = "curl -s -d \"c=1\" -d \"df=20140418\" -d \"dt=20140418\" -H \"X-Pvoutput-Apikey: $pvoutput_apikey\" -H \"X-Pvoutput-SystemId: $pvoutput_sid\" http://pvoutput.org/service/r2/getstatistic.jsp";
+		my $url = "curl -s -d \"c=1\" -d \"df=$date\" -d \"dt=$date\" -H \"X-Pvoutput-Apikey: $pvoutput_apikey\" -H \"X-Pvoutput-SystemId: $pvoutput_sid\" http://pvoutput.org/service/r2/getstatistic.jsp";
 		my $pvoutput_statistics = `$url`;
 		my @pvoutput_statistics_values = split(/,/,$pvoutput_statistics);
 		 
@@ -621,6 +624,14 @@ sub getEpochSeconds {
 	chomp($epochSeconds);
 	
 	return $epochSeconds;
+}
+
+sub getDate {
+	
+	my $date = `date +%Y%m%d`;
+	chomp ($date);
+	
+	return $date;
 }
 
 sub getSMAspotETotal {
