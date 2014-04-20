@@ -36,8 +36,9 @@
 #	2.5.5		->	generation output bug in pvoutput fixed
 #	2.6.0		->	Dashing-Extension (http://shopify.github.io/dashing/) added
 #	2.6.1		->	date problem in pvoutput get for dashing fixed
+#	2.6.2		->	dashing board description for total values fixed (W instead of W/h)
 #
-my $version = "2.6.1";
+my $version = "2.6.2";
 #
 #
 
@@ -548,7 +549,7 @@ sub processDataDashing {
 	
 	# if pvoutput is enabled gather some statistics
 	if ($pvoutput_upload == 1) {
-		# curl  -d "c=1" -d "df=20140418" -d "dt=20140418" -H "X-Pvoutput-Apikey: 97ebea47e855e55c0d7a85b7c3be784edf086833" -H "X-Pvoutput-SystemId: 23592" http://pvoutput.org/service/r2/getstatistic.jsp
+		# curl  -d "c=1" -d "df=20140418" -d "dt=20140418" -H "X-Pvoutput-Apikey: 12345" -H "X-Pvoutput-SystemId: 23592" http://pvoutput.org/service/r2/getstatistic.jsp
 		# 5937,925,5937,5937,5937,0.900,1,20140418,20140418,0.900,20140418,13003,7991,0,0,0,13003,13003,13003
 		# Generated [1] (5937) / Exported [2] (925) /  Consumed [12] (13003) / Import [13] (7991)
 	
@@ -556,10 +557,10 @@ sub processDataDashing {
 		my $pvoutput_statistics = `$url`;
 		my @pvoutput_statistics_values = split(/,/,$pvoutput_statistics);
 		 
-		$powerOverall = "$powerOverall W/h ($pvoutput_statistics_values[12] W/h)";
-		$export = "$export W/h ($pvoutput_statistics_values[1] W/h)";
-		$generation = "$generation W/h ($pvoutput_statistics_values[0] W/h)";
-		$consumption = "$consumption W/h ($pvoutput_statistics_values[11] W/h)";
+		$powerOverall = "$powerOverall W/h ($pvoutput_statistics_values[12] W)";
+		$export = "$export W/h ($pvoutput_statistics_values[1] W)";
+		$generation = "$generation W/h ($pvoutput_statistics_values[0] W)";
+		$consumption = "$consumption W/h ($pvoutput_statistics_values[11] W)";
 	}
 	
 	# build endpoint hash
