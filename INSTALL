@@ -1,10 +1,12 @@
-install the following perl modules
+install the following perl modules (Debian / Raspbian)
+
 # basic
 apt-get install libdevice-serialport-perl liblog-log4perl-perl
 
 # MySQL - Extension
 apt-get install libdbi-perl libdbd-mysql-perl libdbd-mysql
 
+# DATABASE
 CREATE DATABASE `easymeter` /*!40100 DEFAULT CHARACTER SET utf8 COLLATE utf8_bin */
 
 CREATE TABLE `easymeter_data` (
@@ -21,7 +23,8 @@ CREATE TABLE `easymeter_data` (
   `consumption` smallint(6) DEFAULT NULL,
   `generation` smallint(6) DEFAULT NULL,
   `export` smallint(6) DEFAULT NULL,
-  PRIMARY KEY (`ownershipNumber`)
+  PRIMARY KEY (`ownershipNumber`,`createDate`),
+  KEY `idx_easymeter_data_createDate` (`createDate`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 GRANT SELECT, INSERT ON easymeter.* TO easymeter@192.168.178.100 IDENTIFIED BY 'password';
