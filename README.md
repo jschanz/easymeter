@@ -16,8 +16,10 @@ Variables should be self explaining ... script should run every minute to gather
 
 install a cronjob to /etc/cron.d/
 
-/etc/cron.d/easymeter
+__/etc/cron.d/easymeter__
+```bash
 */1 * * * * root sleep 30;/opt/easymeter/bin/easymeter.pl > /var/log/easymeter.log 2>&1
+```
 
 you can skip the "sleep 30" command if you don't use pvoutput-upload. if you use pvoutput-upload it's recommended, because otherwise there would be some problemes with smaspot, bluetooth and the sma inverters.
  
