@@ -37,8 +37,9 @@
 #	2.6.0		->	Dashing-Extension (http://shopify.github.io/dashing/) added
 #	2.6.1		->	date problem in pvoutput get for dashing fixed
 #	2.6.2		->	dashing board description for total values fixed (W instead of W/h)
+#	2.6.3		->	bugfix (issue #2) for negative etotal values if inverter doesn't respond
 #
-my $version = "2.6.2";
+my $version = "2.6.3";
 #
 #
 
@@ -285,7 +286,8 @@ sub processHistoryData {
 	# if pvoutput is enabled, read actual etotal
 	my $etotal;
 	if ($pvoutput_upload == 1) {
-		$etotal = getSMAspotETotal();
+				$etotal = getSMAspotETotal();
+
 	} else {
 		$etotal = 0;
 	}
@@ -321,6 +323,13 @@ sub processHistoryData {
 	$logger->info("export: difference: $exportDifference -> Counter: $exportCounter -> history: $historyExportCounter");
 	my $epochSecondsDifference = $epochSeconds - $historyEpochSeconds;
 	$logger->info("time: difference: $epochSecondsDifference -> Seconds: $epochSeconds -> history: $historyEpochSeconds");
+	
+	if ($historyEtotal > $etotal) {
+		$logger->warn("got $etotal as ETotal from inverter, but got $historyEtotal as history ETotal.");
+		$logger->warn("setting ETotal to historical ETotal to avoid negative values");
+		$etotal = $historyEtotal;
+		
+	}
 	my $etotalDifference = $etotal - $historyEtotal;
 	$logger->info("etotal: difference: $etotalDifference -> ETotal: $etotal -> history: $historyEtotal");
 
@@ -637,16 +646,21 @@ sub getDate {
 
 sub getSMAspotETotal {
 	
-	# get ETotal from SMA inverter
-	my $power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
-	chomp($power);
-
-	$logger->info("received $power kWh from SmaSpot");
+	my $power = 0;
+	my $attempt = 1;
 	
-	# transform kWh in Wh
-	$power = $power * 1000;
-
-	$logger->info("received $power Wh from SmaSpot");
+	while ($power == 0) {
+		# get ETotal from SMA inverter
+		$power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
+		chomp($power);
+	
+		$logger->debug("received $power kWh from SmaSpot");
+		
+		# transform kWh in Wh
+		$power = $power * 1000;
+	
+		$logger->info("received $power Wh from SmaSpot (attempt: $attempt)");		
+	}
 	
 	return $power;
 }
