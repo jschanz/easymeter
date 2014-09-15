@@ -38,8 +38,9 @@
 #	2.6.1		->	date problem in pvoutput get for dashing fixed
 #	2.6.2		->	dashing board description for total values fixed (W instead of W/h)
 #	2.6.3		->	bugfix (issue #2) for negative etotal values if inverter doesn't respond
+#	2.7.0		->	get values from easymeter by regex instead of splitting the return string
 #
-my $version = "2.6.3";
+my $version = "2.7.0";
 #
 #
 
@@ -226,36 +227,65 @@ sub parseRawData {
 	my @parameter = split /\r\n/, $rawData;
 	# Eigentumsnummer (1-0:0.0.0*255)
 	$parameter[2] = transformData($parameter[2]);
-		
+	my $ownerNumber = $rawData;
+	$ownerNumber =~ m/1-0:0\.0\.0.*\((.*)\)/;
+	$ownerNumber = $1;
+	
 	# Bezugsregister (1-0:1.8.0*255) - kWh
 	$parameter[3] = transformData($parameter[3]);
 	$parameter[3] = convertkWh2Wh($parameter[3]);
+	my $importCounter = $rawData;
+	$importCounter =~ m/1-0:1\.8\.0.*\((.*)\*kWh\)/;
+	$importCounter = $1;
 		
 	# Lieferregister (1-0:2.8.0*255) - kWh
 	$parameter[4] = transformData($parameter[4]);
 	$parameter[4] = convertkWh2Wh($parameter[4]);
+	my $exportCounter = $rawData;
+	$exportCounter =~ m/1-0:2\.8\.0.*\((.*)\*kWh\)/;
+	$exportCounter = $1;
 		
 	# Momentanleistung L1 (1-0:21.7.0*255) - Wh
 	$parameter[5] = transformData($parameter[5]);
 	$parameter[5] = $parameter[5]*1;
+	my $powerL1 = $rawData;
+	$powerL1 =~ m/1-0:21\.7\.0.*\((.*)\*W\)/;
+	$powerL1 = $1;
 		
 	# Momentanleistung L2 (1-0:41.7.0*255) - Wh
 	$parameter[6] = transformData($parameter[6]);
+	my $powerL2 = $rawData;
+	$powerL2 =~ m/1-0:41\.7\.0.*\((.*)\*W\)/;
+	$powerL2 = $1;	
 		
 	# Momentanleistung L3 (1-0:61.7.0*255) - Wh
 	$parameter[7] = transformData($parameter[7]);
-		
+	my $powerL3 = $rawData;
+	$powerL3 =~ m/1-0:61\.7\.0.*\((.*)\*W\)/;
+	$powerL3 = $1;
+			
 	# Momentanleistung L1+L2+L3 (1-0:1.7.0*255) - Wh
 	$parameter[8] = transformData($parameter[8]);
+	my $powerL1L2L3 = $rawData;
+	$powerL1L2L3 =~ m/1-0:1\.7\.0.*\((.*)\*W\)/;
+	$powerL1L2L3 = $1;
 		
 	# Statusinformation (1-0:96.5.5*255)
 	# TODO: show bit status
 	$parameter[9] = transformData($parameter[9]);
+	my $status = $rawData;
+	$status =~ m/1-0:96\.5\.5.*\((.*)\)/;
+	$status = $1;
 		
 	# Fabriknummer (0-0:96.1.255*255)
 	$parameter[10] = transformData($parameter[10]);
+	my $serial = $rawData;
+	$serial =~ m/0-0:96\.1\.255.*\((.*)\)/;
+	$serial = $1;
 	
-	$logger->debug("rawData -> $parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]");
+	$logger->info("rawData old -> $parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]");
+	$logger->info("rawData new -> $ownerNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerL1L2L3, $status, $serial");
+	# return ($ownerNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerL1L2L3, $status, $serial);
 	return ($parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]);
 };
 
