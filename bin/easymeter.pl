@@ -236,15 +236,18 @@ sub parseRawData {
 	$parameter[3] = convertkWh2Wh($parameter[3]);
 	my $importCounter = $rawData;
 	$importCounter =~ m/1-0:1\.8\.0.*\((.*)\*kWh\)/;
-	$importCounter = $1;
+	$importCounter = convertkWh2Wh($1);
 		
 	# Lieferregister (1-0:2.8.0*255) - kWh
 	$parameter[4] = transformData($parameter[4]);
 	$parameter[4] = convertkWh2Wh($parameter[4]);
 	my $exportCounter = $rawData;
-	$exportCounter =~ m/1-0:2\.8\.0.*\((.*)\*kWh\)/;
-	$exportCounter = $1;
-		
+	if ($exportCounter =~ m/1-0:2\.8\.0.*\((.*)\*kWh\)/) {
+		$exportCounter = convertkWh2Wh($1);
+	} else {
+		$exportCounter = "0";
+	}
+	
 	# Momentanleistung L1 (1-0:21.7.0*255) - Wh
 	$parameter[5] = transformData($parameter[5]);
 	$parameter[5] = $parameter[5]*1;
@@ -283,10 +286,10 @@ sub parseRawData {
 	$serial =~ m/0-0:96\.1\.255.*\((.*)\)/;
 	$serial = $1;
 	
-	$logger->info("rawData old -> $parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]");
+	# $logger->info("rawData old -> $parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]");
 	$logger->info("rawData new -> $ownerNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerL1L2L3, $status, $serial");
-	# return ($ownerNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerL1L2L3, $status, $serial);
-	return ($parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]);
+	return ($ownerNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerL1L2L3, $status, $serial);
+	# return ($parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]);
 };
 
 sub processDataCSV {
