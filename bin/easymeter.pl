@@ -39,8 +39,9 @@
 #	2.6.2		->	dashing board description for total values fixed (W instead of W/h)
 #	2.6.3		->	bugfix (issue #2) for negative etotal values if inverter doesn't respond
 #	2.7.0		->	get values from easymeter by regex instead of splitting the return string
+#	2.7.1		->	script supports now Q1D smartmeters
 #
-my $version = "2.7.0";
+my $version = "2.7.1";
 #
 #
 
@@ -252,20 +253,29 @@ sub parseRawData {
 	$parameter[5] = transformData($parameter[5]);
 	$parameter[5] = $parameter[5]*1;
 	my $powerL1 = $rawData;
-	$powerL1 =~ m/1-0:21\.7\.0.*\((.*)\*W\)/;
-	$powerL1 = $1;
+	if ($powerL1 =~ m/1-0:21\.7\.0.*\((.*)\*W\)/) {
+		$powerL1 = $1;
+	} else {
+		$powerL1 = "0";
+	}
 		
 	# Momentanleistung L2 (1-0:41.7.0*255) - Wh
 	$parameter[6] = transformData($parameter[6]);
 	my $powerL2 = $rawData;
-	$powerL2 =~ m/1-0:41\.7\.0.*\((.*)\*W\)/;
-	$powerL2 = $1;	
+	if ($powerL2 =~ m/1-0:41\.7\.0.*\((.*)\*W\)/) {
+		$powerL2 = $1;
+	} else {
+		$powerL2 = "0";
+	}
 		
 	# Momentanleistung L3 (1-0:61.7.0*255) - Wh
 	$parameter[7] = transformData($parameter[7]);
 	my $powerL3 = $rawData;
-	$powerL3 =~ m/1-0:61\.7\.0.*\((.*)\*W\)/;
-	$powerL3 = $1;
+	if ($powerL3 =~ m/1-0:61\.7\.0.*\((.*)\*W\)/) {
+		$powerL3 = $1;
+	} else {
+		$powerL3 = "0";
+	}
 			
 	# Momentanleistung L1+L2+L3 (1-0:1.7.0*255) - Wh
 	$parameter[8] = transformData($parameter[8]);
