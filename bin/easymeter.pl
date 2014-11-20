@@ -40,8 +40,9 @@
 #	2.6.3		->	bugfix (issue #2) for negative etotal values if inverter doesn't respond
 #	2.7.0		->	get values from easymeter by regex instead of splitting the return string
 #	2.7.1		->	script supports now Q1D smartmeters
+#   2.8.0		->	Graphite-Extension added
 #
-my $version = "2.7.1";
+my $version = "2.8.0";
 #
 #
 
@@ -126,6 +127,10 @@ my $dashing_export_url = $configOptions{dashing_export_url};
 my $dashing_generation_url = $configOptions{dashing_generation_url};
 my $dashing_consumption_url = $configOptions{dashing_consumption_url};
 
+# Graphite
+my $graphite = $configOptions{graphite};
+my $carbon_server = $configOptions{carbon_server};
+my $carbon_port = $configOptions{carbon_port};
 ###
 # initilaize serial device
 # set serial interface
@@ -180,6 +185,12 @@ if ($rawData) {
 	if ($dashing == 1) {
 		$logger->info("Dashing export enabled");
 		processDataDashing($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
+	}
+	
+	# export data to graphite
+	if ($graphite == 1) {
+		$logger->info("Graphite export enabled");
+		processDataGraphite($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
 	}
 
 	# TODO: Munin
@@ -579,6 +590,39 @@ sub processDataMySQL {
 	$dbh->disconnect();
 }
 
+sub processDataGraphite {
+	use IO::Socket::INET;
+	
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
+
+	# create socket to communicate with carbon-cache
+	my $socket = IO::Socket::INET->new (
+			PeerAddr => $carbon_server,
+			PeerPort => $carbon_port,
+			Proto => 'tcp',
+		);
+	if (!$socket) {
+		$logger->error("Unable to connect to carbon server!");
+	}
+	
+	# get millisecs
+	my $date = getMillisecs();
+	
+	# send data
+	$socket->send("easymeter.importCounter $importCounter $date\n");
+	$socket->send("easymeter.exportCounter $exportCounter $date\n");
+	$socket->send("easymeter.L1 $powerL1 $date\n");
+	$socket->send("easymeter.L2 $powerL2 $date\n");
+	$socket->send("easymeter.L3 $powerL3 $date\n");
+	$socket->send("easymeter.powerOverall $powerOverall $date\n");
+	$socket->send("easymeter.consumption $consumption $date\n");
+	$socket->send("easymeter.generation $generation $date\n");
+	$socket->send("easymeter.export $export $date\n");
+	
+	$socket->shutdown(1);
+}
+
+
 sub processDataDashing {
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 	
@@ -682,6 +726,14 @@ sub getEpochSeconds {
 sub getDate {
 	
 	my $date = `date +%Y%m%d`;
+	chomp ($date);
+	
+	return $date;
+}
+
+sub getMillisecs {
+	
+	my $date = `date +%s`;
 	chomp ($date);
 	
 	return $date;
