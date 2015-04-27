@@ -6,6 +6,9 @@ apt-get install libdevice-serialport-perl liblog-log4perl-perl
 # MySQL - Extension
 apt-get install libdbi-perl libdbd-mysql-perl libdbd-mysql
 
+# Graphite Extension
+apt-get install libwww-perl
+
 # DATABASE
 CREATE DATABASE `easymeter` /*!40100 DEFAULT CHARACTER SET utf8 COLLATE utf8_bin */
 
