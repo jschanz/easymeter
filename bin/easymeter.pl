@@ -41,8 +41,9 @@
 #	2.7.0		->	get values from easymeter by regex instead of splitting the return string
 #	2.7.1		->	script supports now Q1D smartmeters
 #   2.8.0		->	Graphite-Extension added
+#	2.8.1		->	several bugs fixed
 #
-my $version = "2.8.0";
+my $version = "2.8.1";
 #
 #
 
@@ -193,8 +194,6 @@ if ($rawData) {
 		processDataGraphite($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
 	}
 
-	# TODO: Munin
-	# TODO: Graphite
 	# print to STDOUT
 	if ($stdout == 1) {
 		$logger->info("STDOUT enabled");
@@ -742,9 +741,10 @@ sub getMillisecs {
 sub getSMAspotETotal {
 	
 	my $power = 0;
-	my $attempt = 1;
+	my $attempt = 0;
 	
 	while ($power == 0) {
+		++$attempt;
 		# get ETotal from SMA inverter
 		$power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
 		chomp($power);
@@ -754,7 +754,13 @@ sub getSMAspotETotal {
 		# transform kWh in Wh
 		$power = $power * 1000;
 	
-		$logger->info("received $power Wh from SmaSpot (attempt: $attempt)");		
+		$logger->info("received $power Wh from SmaSpot (attempt: $attempt)");
+		
+		# if inverter doesn't return a valid value, use history of etotal
+		if ($attempt == 3) {
+			my ($historyImportCounter, $historyExportCounter, $historyEpochSeconds, $historyEtotal) = getHistoryCounter();
+			$power = $historyEtotal;
+		} 	
 	}
 	
 	return $power;
