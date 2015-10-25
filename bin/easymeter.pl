@@ -743,7 +743,7 @@ sub processDataOpenHAB {
 		$openhab_l2 => $powerL2,
 		$openhab_l3 => $powerL3,
 		$openhab_consumption => $consumption,
-		$openhab_import = > $powerOverall,
+		$openhab_import => $powerOverall,
 		$openhab_generation => $generation,
 		$openhab_export => $export
     ); 
