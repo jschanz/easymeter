@@ -40,10 +40,11 @@
 #	2.6.3		->	bugfix (issue #2) for negative etotal values if inverter doesn't respond
 #	2.7.0		->	get values from easymeter by regex instead of splitting the return string
 #	2.7.1		->	script supports now Q1D smartmeters
-#   2.8.0		->	Graphite-Extension added
+#	2.8.0		->	Graphite-Extension added
 #	2.8.1		->	several bugs fixed
+#	2.8.2		->	send data to openhab
 #
-my $version = "2.8.1";
+my $version = "2.8.2";
 #
 #
 
@@ -128,6 +129,19 @@ my $dashing_export_url = $configOptions{dashing_export_url};
 my $dashing_generation_url = $configOptions{dashing_generation_url};
 my $dashing_consumption_url = $configOptions{dashing_consumption_url};
 
+# OpenHAB
+my $openhab = $configOptions{openhab};
+my $openhab_ownership = $configOptions{openhab_ownership};
+my $openhab_l1 = $configOptions{openhab_l1};
+my $openhab_l2 = $configOptions{openhab_l2};
+my $openhab_l3 = $configOptions{openhab_l3};
+my $openhab_consumption = $configOptions{openhab_consumption};
+my $openhab_import = $configOptions{openhab_import};
+my $openhab_generation = $configOptions{openhab_generation};
+my $openhab_export = $configOptions{openhab_export};
+my $openhab_counter_import = $configOptions{openhab_counter_import};
+my $openhab_counter_export = $configOptions{openhab_counter_export};
+
 # Graphite
 my $graphite = $configOptions{graphite};
 my $carbon_server = $configOptions{carbon_server};
@@ -186,6 +200,12 @@ if ($rawData) {
 	if ($dashing == 1) {
 		$logger->info("Dashing export enabled");
 		processDataDashing($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
+	}
+
+	# export data to a dashing dashboard
+	if ($openhab == 1) {
+		$logger->info("OpenHAB export enabled");
+		processDataOpenHAB($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export);
 	}
 	
 	# export data to graphite
@@ -691,6 +711,69 @@ sub processDataDashing {
     }
 }
 
+sub processDataOpenHAB {
+	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
+	
+	# treat powerOverall as import value (positive values only - negative values will be displayed in export widget)
+	if ( $powerOverall < 0 ) {
+		$powerOverall = 0;
+	}
+	
+	use LWP::UserAgent;
+ 
+	my $ua = LWP::UserAgent->new;
+	
+	# round values to avoid formatting in openhab
+ 	$powerOverall = sprintf("%.1f", $powerOverall);
+ 	$export = sprintf("%.1f", $export);
+ 	$generation = sprintf("%.1f", $generation);
+ 	$consumption = sprintf("%.1f", $consumption);
+	
+	$importCounter = convertWh2KWh($importCounter);
+	$exportCounter = convertWh2KWh($export);
+	
+	my $date = getDate();
+	
+	# build endpoint hash
+	my %endpoint = (
+		$openhab_ownership => $ownershipNumber,
+		$openhab_counter_import => $importCounter,
+		$openhab_counter_export => $exportCounter,
+		$openhab_l1 => $powerL1,
+		$openhab_l2 => $powerL2,
+		$openhab_l3 => $powerL3,
+		$openhab_consumption => $consumption,
+		$openhab_import = > $powerOverall,
+		$openhab_generation => $generation,
+		$openhab_export => $export
+    ); 
+    
+    # export values to each endpoint
+    # curl -s -X PUT -H "Content-Type: text/plain" -d "100" "http://openhab:8080/rest/items/easymeter_L1/state"
+ 	while ( my ($endpoint_url, $value) = each(%endpoint) ) {
+ 		 		
+ 		$logger->debug("$endpoint_url -> $value");
+
+		# set custom HTTP request header fields
+		my $req = HTTP::Request->new(PUT => $endpoint_url);
+		$req->header('content-type' => 'text/plain');
+		# $req->header('x-auth-token' => 'YOUR_AUTH_TOKEN');
+	 
+		# add POST data to HTTP request body
+		my $post_data = $value ;
+		$req->content($post_data);
+
+		my $resp = $ua->request($req);
+		if ($resp->is_success) {
+	    	my $message = $resp->decoded_content;
+	    	$logger->debug("Received reply: $message");
+		} else {
+	    	$logger->error("HTTP POST error code: $resp->code, ");
+	    	$logger->error("HTTP POST error message: $resp->message ");
+		}
+	}
+}
+
 sub transformData {
 	my $data = $_[0];
 	
@@ -710,6 +793,14 @@ sub convertkWh2Wh {
 	my $data = $_[0];
 	
 	$data = $data * 1000;
+	
+	return $data;	
+}
+
+sub convertWh2KWh {
+	my $data = $_[0];
+	
+	$data = $data / 1000;
 	
 	return $data;	
 }
