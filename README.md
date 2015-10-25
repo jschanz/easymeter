@@ -28,6 +28,8 @@ upload to pvoutput is done every 5 minutes
 OpenHAB
 -------
 
+OpenHAB integration is done by the OpenHAB REST API.
+
 **easymeter.items**
 
 ```
