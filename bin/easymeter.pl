@@ -730,7 +730,7 @@ sub processDataOpenHAB {
  	$consumption = sprintf("%.1f", $consumption);
 	
 	$importCounter = convertWh2KWh($importCounter);
-	$exportCounter = convertWh2KWh($export);
+	$exportCounter = convertWh2KWh($exportCounter);
 	
 	my $date = getDate();
 	
