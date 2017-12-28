@@ -3,13 +3,13 @@ install the following perl modules (Debian / Raspbian)
 # basic
 apt-get install libdevice-serialport-perl liblog-log4perl-perl
 
-# MySQL - Extension
+# MySQL support
 apt-get install libdbi-perl libdbd-mysql-perl libdbd-mysql
 
-# Graphite Extension
+# Graphite support
 apt-get install libwww-perl
 
-# DATABASE
+# MySQL
 CREATE DATABASE `easymeter` /*!40100 DEFAULT CHARACTER SET utf8 COLLATE utf8_bin */
 
 CREATE TABLE `easymeter_data` (
@@ -30,4 +30,9 @@ CREATE TABLE `easymeter_data` (
   KEY `idx_easymeter_data_createDate` (`createDate`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
-GRANT SELECT, INSERT ON easymeter.* TO easymeter@192.168.178.100 IDENTIFIED BY 'password';
+GRANT SELECT, INSERT ON easymeter.* TO easymeter@192.168.178.100 IDENTIFIED BY 'aivoTiRahquaeQuohpha8Ing';
+
+# InfluxDB
+CREATE DATABASE easymeter;
+CREATE USER easymeter WITH PASSWORD 'Gumumeb0foo5keiwei7mooBa';
+GRANT ALL ON easymeter TO easymeter;
