@@ -22,7 +22,7 @@ __/etc/cron.d/easymeter__
 ```
 
 you can skip the "sleep 30" command if you don't use pvoutput-upload. if you use pvoutput-upload it's recommended, because otherwise there would be some problemes with smaspot, bluetooth and the sma inverters.
- 
+
 upload to pvoutput is done every 5 minutes
 
 OpenHAB
@@ -45,5 +45,6 @@ Number easymeter_generation 	"Erzeugung PV-Anlage [%.2f Wh]" 	<selfEnergy> 	(Eas
 Number easymeter_export 		"Einspeisung PV-Anlage [%.2f Wh]"	<selfEnergy> 	(Easymeter)
 Number easymeter_counter_import	"Zählerstand Bezug [%.2f KWh]"		<selfEnergy>	(Easymeter)
 Number easymeter_counter_export "Zählerstand Einspeisung [%.2f KWh]" <selfEnergy>  (Easymeter)
+String easymeter_last_update "Letzte Aktualisierung [%s]"					<timer>			(Easymeter)
 ```
 > Written with [StackEdit](https://stackedit.io/).
