@@ -47,4 +47,6 @@ Number easymeter_counter_import	"Zählerstand Bezug [%.2f KWh]"		<selfEnergy>	(E
 Number easymeter_counter_export "Zählerstand Einspeisung [%.2f KWh]" <selfEnergy>  (Easymeter)
 String easymeter_last_update "Letzte Aktualisierung [%s]"					<timer>			(Easymeter)
 ```
+![Openhab Sitemap](https://raw.githubusercontent.com/jschanz/easymeter/master/image/openhab_easymeter.png)
+
 > Written with [StackEdit](https://stackedit.io/).
