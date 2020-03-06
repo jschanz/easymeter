@@ -189,7 +189,7 @@ $logger->info("start reading from device");
 my $rawData = readDevice();
 if ($rawData) {
 	# parse and transform raw data and create readable format
-	$logger->debug("processing data: $rawData");
+	# $logger->debug("processing data: $rawData");
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber) = parseRawData($rawData);
 
 	# process history data and calculate imported and exported power between this and the last run
@@ -298,15 +298,24 @@ sub parseRawData {
 	# Eigentumsnummer (1-0:0.0.0*255)
 	$parameter[2] = transformData($parameter[2]);
 	my $ownerNumber = $rawData;
-	$ownerNumber =~ m/1-0:0\.0\.0.*\((.*)\)/;
-	$ownerNumber = $1;
+	if ($ownerNumber =~ m/1-0:0\.0\.0.*\((.*)\)/){
+		$ownerNumber = $1;
+	} else {
+		$logger->error("OwnerNumber: error decoding received data, exiting.");
+		exit;
+	}
+	
 
 	# Bezugsregister (1-0:1.8.0*255) - kWh
 	$parameter[3] = transformData($parameter[3]);
 	$parameter[3] = convertkWh2Wh($parameter[3]);
 	my $importCounter = $rawData;
-	$importCounter =~ m/1-0:1\.8\.0.*\((.*)\*kWh\)/;
-	$importCounter = convertkWh2Wh($1);
+	if ($importCounter =~ m/1-0:1\.8\.0.*\((.*)\*kWh\)/){
+		$importCounter = convertkWh2Wh($1);
+	} else {
+		$logger->error("ImportCounter: error decoding received data, exiting.");
+		exit;
+	}
 
 	# Lieferregister (1-0:2.8.0*255) - kWh
 	$parameter[4] = transformData($parameter[4]);
@@ -315,7 +324,8 @@ sub parseRawData {
 	if ($exportCounter =~ m/1-0:2\.8\.0.*\((.*)\*kWh\)/) {
 		$exportCounter = convertkWh2Wh($1);
 	} else {
-		$exportCounter = "0";
+		$logger->error("ExportCounter: error decoding received data, exiting.");
+		exit;
 	}
 
 	# Momentanleistung L1 (1-0:21.7.0*255) - Wh
@@ -325,7 +335,8 @@ sub parseRawData {
 	if ($powerL1 =~ m/1-0:21\.7\.0.*\((.*)\*W\)/) {
 		$powerL1 = $1;
 	} else {
-		$powerL1 = "0";
+		$logger->error("L1: error decoding received data, exiting.");
+		exit;
 	}
 
 	# Momentanleistung L2 (1-0:41.7.0*255) - Wh
@@ -334,7 +345,8 @@ sub parseRawData {
 	if ($powerL2 =~ m/1-0:41\.7\.0.*\((.*)\*W\)/) {
 		$powerL2 = $1;
 	} else {
-		$powerL2 = "0";
+		$logger->error("L2: error decoding received data, exiting.");
+		exit;
 	}
 
 	# Momentanleistung L3 (1-0:61.7.0*255) - Wh
@@ -343,27 +355,43 @@ sub parseRawData {
 	if ($powerL3 =~ m/1-0:61\.7\.0.*\((.*)\*W\)/) {
 		$powerL3 = $1;
 	} else {
-		$powerL3 = "0";
+		$logger->error("L3: error decoding received data, exiting.");
+		exit;
 	}
 
 	# Momentanleistung L1+L2+L3 (1-0:1.7.0*255) - Wh
 	$parameter[8] = transformData($parameter[8]);
 	my $powerL1L2L3 = $rawData;
-	$powerL1L2L3 =~ m/1-0:1\.7\.0.*\((.*)\*W\)/;
-	$powerL1L2L3 = $1;
+	if ($powerL1L2L3 =~ m/1-0:1\.7\.0.*\((.*)\*W\)/){
+		$powerL1L2L3 = $1;
+	} else {
+		$logger->error("L1L2L3: error decoding received data, exiting.");
+		exit;
+	}
+	
 
 	# Statusinformation (1-0:96.5.5*255)
 	# TODO: show bit status
 	$parameter[9] = transformData($parameter[9]);
 	my $status = $rawData;
-	$status =~ m/1-0:96\.5\.5.*\((.*)\)/;
-	$status = $1;
+	if ($status =~ m/1-0:96\.5\.5.*\((.*)\)/){
+		$status = $1;
+	} else {
+		$logger->error("Statusinfo: error decoding received data, exiting.");
+		exit;
+	}
+	
 
 	# Fabriknummer (0-0:96.1.255*255)
 	$parameter[10] = transformData($parameter[10]);
 	my $serial = $rawData;
-	$serial =~ m/0-0:96\.1\.255.*\((.*)\)/;
-	$serial = $1;
+	if ($serial =~ m/0-0:96\.1\.255.*\((.*)/){
+		$serial = $1;
+	} else {
+		$logger->error("Serial: error decoding received data, exiting.");
+		exit;
+	}
+	
 
 	# $logger->info("rawData old -> $parameter[2], $parameter[3], $parameter[4], $parameter[5], $parameter[6], $parameter[7], $parameter[8], $parameter[9], $parameter[10]");
 	$logger->info("rawData new -> $ownerNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerL1L2L3, $status, $serial");
@@ -794,7 +822,7 @@ sub processDataOpenHAB {
     # curl -s -X PUT -H "Content-Type: text/plain" -d "100" "http://openhab:8080/rest/items/easymeter_L1/state"
  		while ( my ($endpoint_url, $value) = each(%endpoint) ) {
 
- 		$logger->debug("$endpoint_url -> $value");
+ 		# $logger->debug("$endpoint_url -> $value");
 
 		# set custom HTTP request header fields
 		my $req = HTTP::Request->new(PUT => $endpoint_url);
@@ -808,7 +836,7 @@ sub processDataOpenHAB {
 		my $resp = $ua->request($req);
 		if ($resp->is_success) {
 	    	my $message = $resp->decoded_content;
-	    	$logger->debug("Received reply: $message");
+	    	# $logger->debug("Received reply: $message");
 		} else {
 	    	$logger->error("HTTP POST error code: $resp->code, ");
 	    	$logger->error("HTTP POST error message: $resp->message ");
