@@ -189,7 +189,7 @@ $logger->info("start reading from device");
 my $rawData = readDevice();
 if ($rawData) {
 	# parse and transform raw data and create readable format
-	# $logger->debug("processing data: $rawData");
+	$logger->debug("processing data: $rawData");
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber) = parseRawData($rawData);
 
 	# process history data and calculate imported and exported power between this and the last run
@@ -822,7 +822,7 @@ sub processDataOpenHAB {
     # curl -s -X PUT -H "Content-Type: text/plain" -d "100" "http://openhab:8080/rest/items/easymeter_L1/state"
  		while ( my ($endpoint_url, $value) = each(%endpoint) ) {
 
- 		# $logger->debug("$endpoint_url -> $value");
+ 		$logger->debug("$endpoint_url -> $value");
 
 		# set custom HTTP request header fields
 		my $req = HTTP::Request->new(PUT => $endpoint_url);
@@ -836,7 +836,7 @@ sub processDataOpenHAB {
 		my $resp = $ua->request($req);
 		if ($resp->is_success) {
 	    	my $message = $resp->decoded_content;
-	    	# $logger->debug("Received reply: $message");
+	    	$logger->debug("Received reply: $message");
 		} else {
 	    	$logger->error("HTTP POST error code: $resp->code, ");
 	    	$logger->error("HTTP POST error message: $resp->message ");
