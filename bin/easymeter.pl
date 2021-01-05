@@ -43,11 +43,13 @@
 #	2.8.0		->	Graphite-Extension added
 #	2.8.1		->	several bugs fixed
 #	2.8.2		->	send data to openhab
-# 2.8.3		->	publish data to a mqtt server
-# 2.8.4		->	send data to influxdb
-# 2.8.5		->	send last update timestamp to http
+# 	2.8.3		->	publish data to a mqtt server
+# 	2.8.4		->	send data to influxdb
+# 	2.8.5		->	send last update timestamp to http
+#	2.8.6		->  auth for mqtt added
+#	2.8.7		->  send mqtt values with mosquitto_pub instead of perl module
 #
-my $version = "2.8.5";
+my $version = "2.8.7";
 #
 #
 
@@ -165,9 +167,12 @@ my $influxdb_location = $configOptions{influxdb_location};
 # MQTT
 my $mqtt = $configOptions{mqtt};
 my $mqtt_server = $configOptions{mqtt_server};
+my $mqtt_user = $configOptions{mqtt_user};
+my $mqtt_password = $configOptions{mqtt_password};
+my $mqtt_topic = $configOptions{mqtt_topic};
 
 ###
-# initilaize serial device
+# initalize serial device
 # set serial interface
 my $port = Device::SerialPort->new("$device");
 $port->baudrate($device_baudrate);
@@ -836,7 +841,9 @@ sub processDataOpenHAB {
 		my $resp = $ua->request($req);
 		if ($resp->is_success) {
 	    	my $message = $resp->decoded_content;
-	    	$logger->debug("Received reply: $message");
+			if ($message) {
+				$logger->debug("Received reply: $message");
+			}
 		} else {
 	    	$logger->error("HTTP POST error code: $resp->code, ");
 	    	$logger->error("HTTP POST error message: $resp->message ");
@@ -849,76 +856,60 @@ sub processDataMqtt {
 	use Net::MQTT::Simple;
 
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
-
-	# Net::MQTT::Simple sucks a bit while sending messages in burst mode,
-	# so do a reconnect after each message, otherwise messages will be lost
-	my $mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/ownershipNumber" => $ownershipNumber);
-	sleep 1;
+	
+	# send ownership number
+	sendDataMqtt('ownershipNumber', $ownershipNumber);
 
 	# send kw/h instead of w/h
 	$importCounter = $importCounter / 1000;
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/importCounter" => $importCounter);
-	sleep 1;
+	sendDataMqtt('importCounter', $importCounter);
 
 	# send kw/h instead of w/h
 	$exportCounter = $exportCounter / 1000;
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/exportCounter" => $exportCounter);
-	sleep 1;
+	sendDataMqtt('exportCounter', $importCounter);
 
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/powerL1" => $powerL1);
-	sleep 1;
-
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/powerL2" => $powerL2);
-	sleep 1;
-
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/powerL3" => $powerL3);
-	sleep 1;
+	# send L1, L2, L3
+	sendDataMqtt('powerL1', $powerL1);
+	sendDataMqtt('powerL2', $powerL2);
+	sendDataMqtt('powerL3', $powerL3);
 
 	# treat powerOverall as import value (positive values only - negative values will be displayed in export widget)
 	if ( $powerOverall < 0 ) {
 		$powerOverall = 0;
 	}
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/powerOverall" => $powerOverall);
-	sleep 1;
+	sendDataMqtt('powerOverall', $powerOverall);
 
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/state" => $state);
-	sleep 1;
+	sendDataMqtt('state', $state);
 
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/serialNumber" => $serialNumber);
-	sleep 1;
+	sendDataMqtt('serialNumber', $serialNumber);
 
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/consumption" => $consumption);
-	sleep 1;
+	sendDataMqtt('consumption', $consumption);
 
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/generation" => $generation);
+	sendDataMqtt('generation', $generation);
 
-	sleep 1;
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/export" => $export);
-	sleep 1;
+	sendDataMqtt('export', $export);
 
-	my $datetime = `date "+%d.%m.%y %H:%M:%S"`;
-	chomp($datetime);
-	$mqtt = Net::MQTT::Simple->new($mqtt_server);
-	$mqtt->retain( "/easymeter/lastUpdate" => $datetime);
+	my $lastUpdate = `date +%s`;
+	chomp($lastUpdate);
+	sendDataMqtt('lastUpdate', $lastUpdate);
 
 	if ($pvoutput_upload == 1) {
 		my $consumptionToday = getConsumptionFromPvOutput();
 
-		$mqtt = Net::MQTT::Simple->new($mqtt_server);
-		$mqtt->retain( "/easymeter/consumptionToday" => $consumptionToday);
+		sendDataMqtt('consumptionToday', $consumptionToday);
 	}
+}
+
+sub sendDataMqtt {
+	my ($topic, $value) = @_;
+
+	# connection string for mqtt
+	my $mqtt_connection = "-h $mqtt_server -u $mqtt_user -P $mqtt_password";
+
+	my $mqtt_connection_topic = "-t $mqtt_topic/$topic"; 
+	my $mqtt_connection_message = "-m \"$value\"";
+	my $mqtt_command = "mosquitto_pub " . $mqtt_connection . " " . $mqtt_connection_topic . " " . $mqtt_connection_message;
+	system($mqtt_command);
 }
 
 sub processDataInfluxDB {
