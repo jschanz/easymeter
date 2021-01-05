@@ -866,7 +866,7 @@ sub processDataMqtt {
 
 	# send kw/h instead of w/h
 	$exportCounter = $exportCounter / 1000;
-	sendDataMqtt('exportCounter', $importCounter);
+	sendDataMqtt('exportCounter', $exportCounter);
 
 	# send L1, L2, L3
 	sendDataMqtt('powerL1', $powerL1);
