@@ -1002,7 +1002,7 @@ sub getSMAspotETotal {
 	while ($power == 0) {
 		++$attempt;
 		# get ETotal from SMA inverter
-		$power = `$smaspot_bin -v -finq | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
+		$power = `$smaspot_bin -v -finq -mqtt | grep \"ETotal\" | awk -F \":\" \'{ print \$2 }\' | sed \"s/kWh//g\" | sed \"s/ //g\"`;
 		chomp($power);
 
 		$logger->debug("received $power kWh from SmaSpot");
