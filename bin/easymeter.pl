@@ -48,8 +48,9 @@
 # 	2.8.5		->	send last update timestamp to http
 #	2.8.6		->  auth for mqtt added
 #	2.8.7		->  send mqtt values with mosquitto_pub instead of perl module
+#	2.8.8		->  export real import values to mqtt and openhab to allow calculations based on that values
 #
-my $version = "2.8.7";
+my $version = "2.8.8";
 #
 #
 
@@ -142,6 +143,7 @@ my $openhab_l2 = $configOptions{openhab_l2};
 my $openhab_l3 = $configOptions{openhab_l3};
 my $openhab_consumption = $configOptions{openhab_consumption};
 my $openhab_import = $configOptions{openhab_import};
+my $openhab_import_actual = $configOptions{openhab_import_actual};
 my $openhab_generation = $configOptions{openhab_generation};
 my $openhab_export = $configOptions{openhab_export};
 my $openhab_last_update = $configOptions{openhab_last_update};
@@ -786,9 +788,10 @@ sub processDataDashing {
 sub processDataOpenHAB {
 	my ($ownershipNumber, $importCounter, $exportCounter, $powerL1, $powerL2, $powerL3, $powerOverall, $state, $serialNumber, $consumption, $generation, $export) = @_;
 
-	# treat powerOverall as import value (positive values only - negative values will be displayed in export widget)
-	if ( $powerOverall < 0 ) {
-		$powerOverall = 0;
+	# get import value from powerOverall only if powerOverall > 0
+	my $importActual = 0;
+	if ( $powerOverall >= 0 ) {
+		$importActual = $powerOverall;
 	}
 
 	use LWP::UserAgent;
@@ -818,6 +821,7 @@ sub processDataOpenHAB {
 		$openhab_l3 => $powerL3,
 		$openhab_consumption => $consumption,
 		$openhab_import => $powerOverall,
+		$openhab_import_actual => $importActual,
 		$openhab_generation => $generation,
 		$openhab_export => $export,
 		$openhab_last_update => $datetime
@@ -872,12 +876,14 @@ sub processDataMqtt {
 	sendDataMqtt('powerL1', $powerL1);
 	sendDataMqtt('powerL2', $powerL2);
 	sendDataMqtt('powerL3', $powerL3);
-
-	# treat powerOverall as import value (positive values only - negative values will be displayed in export widget)
-	if ( $powerOverall < 0 ) {
-		$powerOverall = 0;
-	}
 	sendDataMqtt('powerOverall', $powerOverall);
+
+	# get import value from powerOverall only if powerOverall > 0
+	my $importActual = 0;
+	if ( $powerOverall >= 0 ) {
+		$importActual = $powerOverall;
+	}
+	sendDataMqtt('import', $importActual);
 
 	sendDataMqtt('state', $state);
 
